@@ -9,6 +9,19 @@ let tests =
       let subject = true
       Expect.isTrue subject "I compute, therefore I am."
 
+    testCase "vstest forbidden . separators + boi" <| fun _ -> 
+      ()
+
+    testList "list with vstest + separators . boi" [
+      testCase "a direct + child" <| fun _ -> ()
+      test "another direct child" {}
+    ]
+
+    testList "Nested list" [
+      testCase "sup" <| fun _ -> ()
+      test "boi" {}
+    ]
+
     testCase "when true is not (should fail)" <| fun _ ->
       let subject = false
       Expect.isTrue subject "I should fail because the subject is false"
