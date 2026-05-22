@@ -16,14 +16,10 @@ module AssemblyVersion =
         | null -> "0.0.0"
         | x -> x.InformationalVersion
 
-module MTPTestNode =
+module TestNodeUpdates =
     open Microsoft.Testing.Platform.Extensions.Messages
     open Microsoft.Testing.Platform.TestHost
-
-    let newTestNode (uid: TestNodeUid) (displayName: string) (properties: PropertyBag) = 
-        TestNode(Uid = uid, DisplayName = displayName, Properties = properties)
-
-    let ofExpectoTest (sessionId: SessionUid) (test: Test) : TestNodeUpdateMessage list =
+    let ofExpectoTest (sessionId: SessionUid) (properties: IProperty list) (test: Test) : TestNodeUpdateMessage list =
         let rec recurse (parentId: TestNodeUid option) (test: Test) : TestNodeUpdateMessage list =
             match test with 
             | Test.Sequenced (_, childTest) -> recurse parentId childTest
@@ -33,16 +29,70 @@ module MTPTestNode =
                 let currentNode =
                     let parentUidString = parentId |> Option.map _.Value |> Option.defaultValue String.Empty
                     // NOTE: the TestNodeUid is expected to be stable across test runs
-                    let testUid = TestNodeUid(parentUidString + "." + label)
+                    // TODO: Use the separator from the expecto configuration
+                    let testFullName = 
+                        match parentId with 
+                        | None -> label
+                        | Some parentUid -> parentUid.Value + "." + label
                     TestNodeUpdateMessage(
                         sessionId,
-                        new TestNode(Uid = testUid, DisplayName = label, Properties = PropertyBag(DiscoveredTestNodeStateProperty.CachedInstance)),
+                        new TestNode(Uid = TestNodeUid(testFullName), DisplayName = label, Properties = PropertyBag(properties)),
                         parentId |> Option.defaultValue null
                     )
                 let childNodes = recurse (Some currentNode.TestNode.Uid) childTest
                 currentNode :: childNodes
 
         recurse None test
+ 
+    let overwriteUpdateProps (newProperty: IProperty) (msg: TestNodeUpdateMessage) = 
+        TestNodeUpdateMessage(
+            sessionUid = msg.SessionUid, 
+            testNode = TestNode(Uid = msg.TestNode.Uid, DisplayName = msg.TestNode.DisplayName, Properties = PropertyBag(newProperty)),
+            parentTestNodeUid = msg.ParentTestNodeUid)
+
+module private MTPPrinterAdapter =
+  open Microsoft.Testing.Platform.Extensions.Messages
+  type private TestPrinters = Expecto.Impl.TestPrinters
+
+  let create (expectedResults: TestNodeUpdateMessage list) (publishMessage: TestNodeUpdateMessage -> Async<unit>) =
+    let testResultLookup : Map<string, TestNodeUpdateMessage> = 
+        expectedResults
+        |> List.map (fun msg -> msg.TestNode.Uid.Value, msg)
+        |> Map
+
+    let beforeEach name =
+        Map.find name testResultLookup
+        |> TestNodeUpdates.overwriteUpdateProps (InProgressTestNodeStateProperty())
+        |> publishMessage
+
+    // let info _ = async.Zero ()
+
+    let passed (name: string) (duration: TimeSpan) =
+        Map.find name testResultLookup
+        |> TestNodeUpdates.overwriteUpdateProps PassedTestNodeStateProperty.CachedInstance
+        |> publishMessage
+
+    let ignored (name: string) (reason: string) =
+      Map.find name testResultLookup
+        |> TestNodeUpdates.overwriteUpdateProps (SkippedTestNodeStateProperty($"Skipped: {reason}" ))
+        |> publishMessage
+
+    let failed (name: string) (reason: string) (duration: TimeSpan) =
+        Map.find name testResultLookup
+        |> TestNodeUpdates.overwriteUpdateProps (FailedTestNodeStateProperty(reason))
+        |> publishMessage
+      
+    let exn (name: string) (exn: exn) (duration: TimeSpan) =
+      Map.find name testResultLookup
+        |> TestNodeUpdates.overwriteUpdateProps (ErrorTestNodeStateProperty(exn))
+        |> publishMessage
+
+    TestPrinters.silent
+    |> TestPrinters.withBeforeEach beforeEach
+    |> TestPrinters.withPassed passed
+    |> TestPrinters.withIgnored ignored
+    |> TestPrinters.withFailed failed
+    |> TestPrinters.withExn exn
 
 
 type ExpectoExtension () = 
@@ -79,7 +129,10 @@ type ExpectoExtension () =
                 match maybeTopLevelTest with 
                 | None -> Task.CompletedTask
                 | Some topLevelTest ->
-                    let updateMessages = topLevelTest |> MTPTestNode.ofExpectoTest discoveryRequest.Session.SessionUid 
+                    let updateMessages = 
+                        topLevelTest 
+                        |> TestNodeUpdates.ofExpectoTest discoveryRequest.Session.SessionUid [Messages.DiscoveredTestNodeStateProperty.CachedInstance]
+                    
                     updateMessages 
                     |> List.map (fun updateMessage ->
                         context.MessageBus.PublishAsync(this, updateMessage)
@@ -87,7 +140,20 @@ type ExpectoExtension () =
                     |> Array.ofList
                     |> Task.WhenAll
             | :? RunTestExecutionRequest as runRequest -> 
-                raise (NotImplementedException())
+                let maybeTopLevelTest = Expecto.Impl.testFromAssembly testAssembly
+                match maybeTopLevelTest with 
+                | None -> Task.CompletedTask
+                | Some topLevelTest -> 
+                    let updateMessages = 
+                        topLevelTest 
+                        |> TestNodeUpdates.ofExpectoTest runRequest.Session.SessionUid []
+                    let publishMessage (update: Microsoft.Testing.Platform.Extensions.Messages.TestNodeUpdateMessage) =
+                        context.MessageBus.PublishAsync(this, update)
+                        |> Async.AwaitTask
+                    let printAdapter = MTPPrinterAdapter.create updateMessages publishMessage
+                    let config = [CLIArguments.Printer printAdapter]
+                    runTestsWithCLIArgsAndCancel context.CancellationToken config [||] topLevelTest |> ignore
+                    Task.CompletedTask
             | _ -> Task.CompletedTask
 
     interface IDisposable with        
@@ -116,8 +182,6 @@ type TestApplicationBuilderExtensions() =
 
 [<EntryPoint>]
 let main argv =
-
-
     task {
         let! builder = TestApplication.CreateBuilderAsync(argv) 
         let! testApplication =
