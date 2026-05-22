@@ -113,48 +113,52 @@ type ExpectoExtension () =
     
     interface ITestFramework with        
         member this.CloseTestSessionAsync(context: CloseTestSessionContext): Task<CloseTestSessionResult> = 
-            let result = CloseTestSessionResult()
-            result.IsSuccess <- true
+            let result = CloseTestSessionResult(IsSuccess = true)
             Task.FromResult(result)
 
         member this.CreateTestSessionAsync(context: CreateTestSessionContext): Task<CreateTestSessionResult> = 
-            let result = CreateTestSessionResult()
-            result.IsSuccess <- true
+            let result = CreateTestSessionResult(IsSuccess = true)
             Task.FromResult(result)
 
         member this.ExecuteRequestAsync(context: ExecuteRequestContext): Task = 
-            match context.Request with 
-            | :? DiscoverTestExecutionRequest as discoveryRequest -> 
-                let maybeTopLevelTest = Expecto.Impl.testFromAssembly testAssembly
-                match maybeTopLevelTest with 
-                | None -> Task.CompletedTask
-                | Some topLevelTest ->
-                    let updateMessages = 
-                        topLevelTest 
-                        |> TestNodeUpdates.ofExpectoTest discoveryRequest.Session.SessionUid [Messages.DiscoveredTestNodeStateProperty.CachedInstance]
+            task {
+                do! match context.Request with 
+                    | :? DiscoverTestExecutionRequest as discoveryRequest -> 
+                        let maybeTopLevelTest = Expecto.Impl.testFromAssembly testAssembly
+                        match maybeTopLevelTest with 
+                        | None -> Task.CompletedTask
+                        | Some topLevelTest ->
+                            let updateMessages = 
+                                topLevelTest 
+                                |> TestNodeUpdates.ofExpectoTest discoveryRequest.Session.SessionUid [Messages.DiscoveredTestNodeStateProperty.CachedInstance]
+                            
+                            updateMessages 
+                            |> List.map (fun updateMessage ->
+                                context.MessageBus.PublishAsync(this, updateMessage)
+                            )
+                            |> Array.ofList
+                            |> Task.WhenAll
+                    | :? RunTestExecutionRequest as runRequest -> 
+                        let maybeTopLevelTest = Expecto.Impl.testFromAssembly testAssembly
+                        match maybeTopLevelTest with 
+                        | None -> Task.CompletedTask
+                        | Some topLevelTest -> 
+                            let updateMessages = 
+                                topLevelTest 
+                                |> TestNodeUpdates.ofExpectoTest runRequest.Session.SessionUid []
+                            let publishMessage (update: Microsoft.Testing.Platform.Extensions.Messages.TestNodeUpdateMessage) =
+                                context.MessageBus.PublishAsync(this, update)
+                                |> Async.AwaitTask
+                            let printAdapter = MTPPrinterAdapter.create updateMessages publishMessage
+                            let config = [CLIArguments.Printer printAdapter]
+                            runTestsWithCLIArgsAndCancel context.CancellationToken config [||] topLevelTest |> ignore
+                            
+                            Task.CompletedTask
+                    | _ -> Task.CompletedTask
                     
-                    updateMessages 
-                    |> List.map (fun updateMessage ->
-                        context.MessageBus.PublishAsync(this, updateMessage)
-                    )
-                    |> Array.ofList
-                    |> Task.WhenAll
-            | :? RunTestExecutionRequest as runRequest -> 
-                let maybeTopLevelTest = Expecto.Impl.testFromAssembly testAssembly
-                match maybeTopLevelTest with 
-                | None -> Task.CompletedTask
-                | Some topLevelTest -> 
-                    let updateMessages = 
-                        topLevelTest 
-                        |> TestNodeUpdates.ofExpectoTest runRequest.Session.SessionUid []
-                    let publishMessage (update: Microsoft.Testing.Platform.Extensions.Messages.TestNodeUpdateMessage) =
-                        context.MessageBus.PublishAsync(this, update)
-                        |> Async.AwaitTask
-                    let printAdapter = MTPPrinterAdapter.create updateMessages publishMessage
-                    let config = [CLIArguments.Printer printAdapter]
-                    runTestsWithCLIArgsAndCancel context.CancellationToken config [||] topLevelTest |> ignore
-                    Task.CompletedTask
-            | _ -> Task.CompletedTask
+                context.Complete()
+            } 
+  
 
     interface IDisposable with        
         member this.Dispose(): unit = 
