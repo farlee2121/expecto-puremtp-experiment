@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "Run Tests": {
+      "commandName": "Project"
+    },
+    "Discover Tests": {
+      "commandName": "Project",
+      "commandLineArgs": "--list-tests"
+    }
+  }
+}
