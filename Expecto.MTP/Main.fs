@@ -16,16 +16,40 @@ module AssemblyVersion =
         | null -> "0.0.0"
         | x -> x.InformationalVersion
 
+module SourceLocation = 
+    let tryGetCodeLocation assembly (test: Test) : SourceLocation option =
+        match test with 
+        | Test.TestLabel (_, Test.TestCase (testCode, _), _) -> 
+            let location = Expecto.Impl.CodeLocation.getLocation assembly testCode
+            if location = SourceLocation.empty 
+            then None 
+            else Some location
+        | _ -> None
+
+    let nullLocationLookup assembly (test: Test) : SourceLocation option =
+        None
+
 module TestNodeUpdates =
     open Microsoft.Testing.Platform.Extensions.Messages
     open Microsoft.Testing.Platform.TestHost
-    let ofExpectoTest (sessionId: SessionUid) (properties: IProperty list) (test: Test) : TestNodeUpdateMessage list =
+
+    module TestFileLocationProperty =
+        let ofSourceLocation (location: SourceLocation) =
+            TestFileLocationProperty(location.sourcePath, LinePositionSpan(LinePosition(location.lineNumber, 0), LinePosition(location.lineNumber, 0)))
+
+        let tryAddLocationProp (maybeLocation: TestFileLocationProperty option) (props: IProperty list) =
+            match maybeLocation with 
+            | None -> props
+            | Some locationProp -> locationProp :: props
+
+
+    let ofExpectoTest (tryGetCodeLocation: Test -> SourceLocation option) (sessionId: SessionUid) (properties: IProperty list) (test: Test) : TestNodeUpdateMessage list =
         let rec recurse (parentId: TestNodeUid option) (test: Test) : TestNodeUpdateMessage list =
             match test with 
             | Test.Sequenced (_, childTest) -> recurse parentId childTest
             | Test.TestList (tests, _) -> tests |> List.collect (recurse parentId)
             | Test.TestCase (testcode, _) -> []
-            | Test.TestLabel (label, childTest, _) -> 
+            | Test.TestLabel (label, childTest, _) as testNode -> 
                 let currentNode =
                     let parentUidString = parentId |> Option.map _.Value |> Option.defaultValue String.Empty
                     // NOTE: the TestNodeUid is expected to be stable across test runs
@@ -34,9 +58,17 @@ module TestNodeUpdates =
                         match parentId with 
                         | None -> label
                         | Some parentUid -> parentUid.Value + "." + label
+
+                    let maybeCodeLocation = tryGetCodeLocation testNode |> Option.map TestFileLocationProperty.ofSourceLocation
+
+                    let properties = properties |> TestFileLocationProperty.tryAddLocationProp  maybeCodeLocation
+
                     TestNodeUpdateMessage(
                         sessionId,
-                        new TestNode(Uid = TestNodeUid(testFullName), DisplayName = label, Properties = PropertyBag(properties)),
+                        new TestNode(
+                            Uid = TestNodeUid(testFullName), 
+                            DisplayName = label, 
+                            Properties = PropertyBag(properties)),
                         parentId |> Option.defaultValue null
                     )
                 let childNodes = recurse (Some currentNode.TestNode.Uid) childTest
@@ -73,7 +105,7 @@ module private MTPPrinterAdapter =
         |> publishMessage
 
     let ignored (name: string) (reason: string) =
-      Map.find name testResultLookup
+        Map.find name testResultLookup
         |> TestNodeUpdates.overwriteUpdateProps (SkippedTestNodeStateProperty($"Skipped: {reason}" ))
         |> publishMessage
 
@@ -83,7 +115,7 @@ module private MTPPrinterAdapter =
         |> publishMessage
       
     let exn (name: string) (exn: exn) (duration: TimeSpan) =
-      Map.find name testResultLookup
+        Map.find name testResultLookup
         |> TestNodeUpdates.overwriteUpdateProps (ErrorTestNodeStateProperty(exn))
         |> publishMessage
 
@@ -130,14 +162,15 @@ type ExpectoExtension () =
                         | Some topLevelTest ->
                             let updateMessages = 
                                 topLevelTest 
-                                |> TestNodeUpdates.ofExpectoTest discoveryRequest.Session.SessionUid [Messages.DiscoveredTestNodeStateProperty.CachedInstance]
-                            
+                                |> TestNodeUpdates.ofExpectoTest (SourceLocation.tryGetCodeLocation testAssembly) discoveryRequest.Session.SessionUid [Messages.DiscoveredTestNodeStateProperty.CachedInstance]
+                             
                             updateMessages 
                             |> List.map (fun updateMessage ->
                                 context.MessageBus.PublishAsync(this, updateMessage)
                             )
                             |> Array.ofList
                             |> Task.WhenAll
+
                     | :? RunTestExecutionRequest as runRequest -> 
                         let maybeTopLevelTest = Expecto.Impl.testFromAssembly testAssembly
                         match maybeTopLevelTest with 
@@ -145,7 +178,7 @@ type ExpectoExtension () =
                         | Some topLevelTest -> 
                             let updateMessages = 
                                 topLevelTest 
-                                |> TestNodeUpdates.ofExpectoTest runRequest.Session.SessionUid []
+                                |> TestNodeUpdates.ofExpectoTest (SourceLocation.tryGetCodeLocation testAssembly) runRequest.Session.SessionUid []
                             let publishMessage (update: Microsoft.Testing.Platform.Extensions.Messages.TestNodeUpdateMessage) =
                                 context.MessageBus.PublishAsync(this, update)
                                 |> Async.AwaitTask
