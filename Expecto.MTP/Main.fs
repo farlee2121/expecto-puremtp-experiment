@@ -42,36 +42,53 @@ module TestNodeUpdates =
             | None -> props
             | Some locationProp -> locationProp :: props
 
+    type PropertyBag with 
+        member this.TeeAddProperty (maybeProperty: #IProperty option) : PropertyBag =
+            match maybeProperty with 
+            | None -> this
+            | Some property -> 
+                this.Add(property)
+                this
+
+        member this.MaybeAddProperty (maybeProperty: #IProperty option) : unit =
+            this.TeeAddProperty(maybeProperty) |> ignore
 
     let ofExpectoTest (tryGetCodeLocation: Test -> SourceLocation option) (sessionId: SessionUid) (properties: IProperty list) (test: Test) : TestNodeUpdateMessage list =
-        let rec recurse (parentId: TestNodeUid option) (test: Test) : TestNodeUpdateMessage list =
+        let rec recurse (maybeParentNode: TestNode option) (test: Test) : TestNodeUpdateMessage list =
             match test with 
-            | Test.Sequenced (_, childTest) -> recurse parentId childTest
-            | Test.TestList (tests, _) -> tests |> List.collect (recurse parentId)
+            | Test.Sequenced (_, childTest) -> recurse maybeParentNode childTest
+            | Test.TestList (tests, _) -> tests |> List.collect (recurse maybeParentNode)
             | Test.TestCase (testcode, _) -> []
             | Test.TestLabel (label, childTest, _) as testNode -> 
                 let currentNode =
-                    let parentUidString = parentId |> Option.map _.Value |> Option.defaultValue String.Empty
                     // NOTE: the TestNodeUid is expected to be stable across test runs
                     // TODO: Use the separator from the expecto configuration
                     let testFullName = 
-                        match parentId with 
+                        match maybeParentNode with 
                         | None -> label
-                        | Some parentUid -> parentUid.Value + "." + label
+                        | Some parentNode -> parentNode.Uid.Value + "+" + label
 
                     let maybeCodeLocation = tryGetCodeLocation testNode |> Option.map TestFileLocationProperty.ofSourceLocation
 
-                    let properties = properties |> TestFileLocationProperty.tryAddLocationProp  maybeCodeLocation
+                    let testMethodIdentifier = 
+                        match maybeParentNode with 
+                        | None -> TestMethodIdentifierProperty("blah", "blah" , "", label, 0, [||], "unit")
+                        | Some parentNode -> TestMethodIdentifierProperty("blah", "blah", parentNode.Uid.Value, label, 0, [||], "unit")
+                    let propertyBag = 
+                        PropertyBag(properties)
+                        |> _.TeeAddProperty(maybeCodeLocation)
+
+                    propertyBag.Add(testMethodIdentifier)
 
                     TestNodeUpdateMessage(
                         sessionId,
                         new TestNode(
                             Uid = TestNodeUid(testFullName), 
                             DisplayName = label, 
-                            Properties = PropertyBag(properties)),
-                        parentId |> Option.defaultValue null
+                            Properties = propertyBag),
+                        maybeParentNode |> Option.map _.Uid |> Option.defaultValue null
                     )
-                let childNodes = recurse (Some currentNode.TestNode.Uid) childTest
+                let childNodes = recurse (Some currentNode.TestNode) childTest
                 currentNode :: childNodes
 
         recurse None test
