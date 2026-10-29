@@ -29,6 +29,70 @@ module SourceLocation =
     let nullLocationLookup assembly (test: Test) : SourceLocation option =
         None
 
+module Filter = 
+
+    let private sequenceResultM (results: Result<'ok, 'error> seq) : Result<'ok seq, 'error> =
+        Seq.fold (fun state next -> 
+                state |> Result.bind (fun (successes: 'ok ResizeArray) ->
+                    match next with
+                    | Ok nextSuccess -> 
+                        successes.Add(nextSuccess)
+                        Ok successes
+                    | Error error -> Error error
+                )
+            ) 
+            (Ok (ResizeArray<'ok>())) results
+        |> Result.map (fun l -> l :> 'ok seq)
+    let ofMTPFilter (joinWith: string) (mtpFilter: ITestExecutionFilter) : Result<(string list -> bool) option, Exception> =
+        let rec recurse (mtpFilter: ITestExecutionFilter) : Result<(string list -> bool) option, Exception> = 
+            match mtpFilter with 
+            | :? NopFilter ->
+                Ok None
+                // Ok (fun _ -> true)
+            | :? TestNodeUidListFilter as uidFilter->
+                // PROBLEM: the MTP TestNodeUid is meant to uniquely identify tests groupings or cases, 
+                //          but expecto's Test.filter flattens to testLeafs to filter. 
+                //          It's possible we could include extra tests who's name hierarchy flattens the same even if the segments are different 
+                (Ok << Some)(fun (nameSegments: string list) -> 
+                    let flatName = nameSegments |> String.concat joinWith
+                    uidFilter.TestNodeUids 
+                    |> Array.exists (fun (uid: Messages.TestNodeUid) -> flatName.StartsWith(uid))
+                ) 
+
+            // NOTE: --treenode-filter isn't accepted as a valid cli argument. It's experimental, so there may be special steps to enable it. 
+            //       I couldn't test the TestNodeFilter and CompositTestExecutionFilter, so I commented them out
+
+            // | :? TreeNodeFilter as nodeFilter ->
+            //     (Ok << Some) (fun (nameSegments: string list) -> 
+            //         let flatName = nameSegments |> String.concat joinWith
+            //         nodeFilter.MatchesFilter(flatName, Messages.PropertyBag())
+            //     ) 
+
+            // | :? CompositeTestExecutionFilter as composite-> 
+            //     match composite.Operator with
+            //     | TestExecutionFilterOperator.And ->
+            //         composite.Filters 
+            //         |> Seq.map recurse 
+            //         |> sequenceResultM 
+            //         |> Result.map  (fun subFilters -> 
+            //             Some (fun nameSegmentList -> 
+            //                 subFilters |> Seq.forall (fun f -> 
+            //                     match f with 
+            //                     | Some f -> f nameSegmentList
+            //                     | None -> true
+            //                 )
+            //             )
+            //         ) 
+            //     | unsupportedOperator -> Error (InvalidOperationException($"Unsupported filter operator {unsupportedOperator}"))
+            | unsupported -> 
+                let filterTypeName = 
+                    match unsupported with 
+                    | null -> "null"
+                    | unsupported -> unsupported.GetType().FullName
+                (InvalidOperationException($"Unsupported filter type '{filterTypeName}'")) :> Exception |> Error
+
+        recurse mtpFilter
+
 module TestNodeUpdates =
     open Microsoft.Testing.Platform.Extensions.Messages
     open Microsoft.Testing.Platform.TestHost
@@ -43,7 +107,7 @@ module TestNodeUpdates =
             | Some locationProp -> locationProp :: props
 
 
-    let ofExpectoTest (tryGetCodeLocation: Test -> SourceLocation option) (sessionId: SessionUid) (properties: IProperty list) (test: Test) : TestNodeUpdateMessage list =
+    let ofExpectoTest (nameJoiner: string) (tryGetCodeLocation: Test -> SourceLocation option) (sessionId: SessionUid) (properties: IProperty list) (test: Test) : TestNodeUpdateMessage list =
         let rec recurse (parentId: TestNodeUid option) (test: Test) : TestNodeUpdateMessage list =
             match test with 
             | Test.Sequenced (_, childTest) -> recurse parentId childTest
@@ -57,7 +121,7 @@ module TestNodeUpdates =
                     let testFullName = 
                         match parentId with 
                         | None -> label
-                        | Some parentUid -> parentUid.Value + "." + label
+                        | Some parentUid -> parentUid.Value + nameJoiner + label
 
                     let maybeCodeLocation = tryGetCodeLocation testNode |> Option.map TestFileLocationProperty.ofSourceLocation
 
@@ -153,16 +217,27 @@ type ExpectoExtension () =
             Task.FromResult(result)
 
         member this.ExecuteRequestAsync(context: ExecuteRequestContext): Task = 
+            let nameSeparator = defaultConfig.joinWith.asString 
+            
+            let maybeFilter (mtpFilter: ITestExecutionFilter) (expectoTest: Test) = 
+                let maybeExpectoFilter = mtpFilter |> Filter.ofMTPFilter nameSeparator |> Result.defaultWith raise
+                
+                match maybeExpectoFilter with
+                | Some filter -> expectoTest |> Test.filter nameSeparator filter
+                | None -> expectoTest
+
             task {
                 do! match context.Request with 
-                    | :? DiscoverTestExecutionRequest as discoveryRequest -> 
+                    | :? DiscoverTestExecutionRequest as discoveryRequest ->
                         let maybeTopLevelTest = Expecto.Impl.testFromAssembly testAssembly
                         match maybeTopLevelTest with 
                         | None -> Task.CompletedTask
                         | Some topLevelTest ->
+                            let filtered = maybeFilter discoveryRequest.Filter topLevelTest
+
                             let updateMessages = 
-                                topLevelTest 
-                                |> TestNodeUpdates.ofExpectoTest (SourceLocation.tryGetCodeLocation testAssembly) discoveryRequest.Session.SessionUid [Messages.DiscoveredTestNodeStateProperty.CachedInstance]
+                                filtered 
+                                |> TestNodeUpdates.ofExpectoTest nameSeparator (SourceLocation.tryGetCodeLocation testAssembly) discoveryRequest.Session.SessionUid [Messages.DiscoveredTestNodeStateProperty.CachedInstance]
                              
                             updateMessages 
                             |> List.map (fun updateMessage ->
@@ -171,20 +246,21 @@ type ExpectoExtension () =
                             |> Array.ofList
                             |> Task.WhenAll
 
-                    | :? RunTestExecutionRequest as runRequest -> 
+                    | :? RunTestExecutionRequest as runRequest ->
                         let maybeTopLevelTest = Expecto.Impl.testFromAssembly testAssembly
                         match maybeTopLevelTest with 
                         | None -> Task.CompletedTask
                         | Some topLevelTest -> 
+                            let filtered = maybeFilter runRequest.Filter topLevelTest
                             let updateMessages = 
-                                topLevelTest 
-                                |> TestNodeUpdates.ofExpectoTest (SourceLocation.tryGetCodeLocation testAssembly) runRequest.Session.SessionUid []
+                                filtered 
+                                |> TestNodeUpdates.ofExpectoTest nameSeparator (SourceLocation.tryGetCodeLocation testAssembly) runRequest.Session.SessionUid []
                             let publishMessage (update: Microsoft.Testing.Platform.Extensions.Messages.TestNodeUpdateMessage) =
                                 context.MessageBus.PublishAsync(this, update)
                                 |> Async.AwaitTask
                             let printAdapter = MTPPrinterAdapter.create updateMessages publishMessage
                             let config = [CLIArguments.Printer printAdapter]
-                            runTestsWithCLIArgsAndCancel context.CancellationToken config [||] topLevelTest |> ignore
+                            runTestsWithCLIArgsAndCancel context.CancellationToken config [||] filtered |> ignore
                             
                             Task.CompletedTask
                     | _ -> Task.CompletedTask
