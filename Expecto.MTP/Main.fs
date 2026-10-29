@@ -189,6 +189,7 @@ module private MTPPrinterAdapter =
     |> TestPrinters.withIgnored ignored
     |> TestPrinters.withFailed failed
     |> TestPrinters.withExn exn
+    |> TestPrinters.withInfo TestPrinters.defaultPrinter.info
 
 
 type ExpectoExtension () = 
