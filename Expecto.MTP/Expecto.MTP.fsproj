@@ -9,7 +9,7 @@
   <PropertyGroup>
     <IsPackable>true</IsPackable>
     <PackageId>Expecto.MTP</PackageId>
-    <VersionPrefix>0.1.0</VersionPrefix>
+    <VersionPrefix>0.1.5</VersionPrefix>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,11 +17,12 @@
     <Content Include="buildMultiTargeting/**">
       <Pack>true</Pack>
       <PackagePath>buildMultiTargeting</PackagePath>
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
     <TfmSpecificPackageFile Include="build/**">
       <PackagePath>build/$(TargetFramework)</PackagePath>
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </TfmSpecificPackageFile>
+    <TfmSpecificPackageFile Include="buildTransitive/**">
+      <PackagePath>buildTransitive/$(TargetFramework)</PackagePath>
     </TfmSpecificPackageFile>
     <Compile Include="Main.fs" />
   </ItemGroup>

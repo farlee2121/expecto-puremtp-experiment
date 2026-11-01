@@ -1,0 +1,4 @@
+<Project>
+    <!-- Mimicking https://github.com/microsoft/testfx/blob/2a8ebadb17a3b388b62bbb0cedd407999e3ce10a/src/Platform/Microsoft.Testing.Extensions.HangDump/build/Microsoft.Testing.Extensions.HangDump.props -->
+  <Import Project="$(MSBuildThisFileDirectory)..\..\build\$([System.IO.Path]::GetFileName($([System.IO.Path]::GetDirectoryName($(MSBuildThisFileDirectory)))))\Expecto.MTP.props" />
+</Project>
