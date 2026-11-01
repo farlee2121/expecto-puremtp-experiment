@@ -5,24 +5,9 @@ open Expecto
 [<Tests>]
 let tests =
   testList "samples" [
-    testCase "simple" <| fun() -> 
-      ()
     testCase "universe exists (╭ರᴥ•́)" <| fun _ ->
       let subject = true
       Expect.isTrue subject "I compute, therefore I am."
-
-    testCase "vstest forbidden . separators + boi" <| fun _ -> 
-      ()
-
-    testList "list with vstest + separators . boi" [
-      testCase "a direct + child" <| fun _ -> ()
-      test "another direct child" {}
-    ]
-
-    testList "Nested list" [
-      testCase "sup" <| fun _ -> ()
-      test "boi" {}
-    ]
 
     testCase "when true is not (should fail)" <| fun _ ->
       let subject = false

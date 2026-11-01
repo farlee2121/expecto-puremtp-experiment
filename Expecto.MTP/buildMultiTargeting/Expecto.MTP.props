@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Project>
+  <ItemGroup>
+    <TestingPlatformBuilderHook Include="df5356f4-d91c-4dc6-b392-5ebc7f38bb13">
+      <DisplayName>Expecto.MTP</DisplayName>
+      <TypeFullName>Expecto.MTP.TestingPlatformBuilderHook</TypeFullName>
+    </TestingPlatformBuilderHook>
+  </ItemGroup>
+</Project>

@@ -1,4 +1,4 @@
-﻿module Expecto.MTP
+﻿namespace Expecto.MTP
 open Expecto
 open Microsoft.Testing.Platform.Builder
 open Microsoft.Testing.Platform.Capabilities.TestFramework
@@ -294,18 +294,24 @@ type TestApplicationBuilderExtensions() =
             new ExpectoExtension() 
         builder.RegisterTestFramework(capabilityFactory, frameworkFactory)
 
-[<EntryPoint>]
-let main argv =
-    task {
-        let! builder = TestApplication.CreateBuilderAsync(argv) 
-        let! testApplication =
-            builder
-                .AddExpecto()
-                .BuildAsync()
+[<AbstractClass;Sealed>]
+type TestingPlatformBuilderHook =
+    static member AddExtensions(testApplicationBuilder: ITestApplicationBuilder, arguments: string[]) : unit =
+        testApplicationBuilder.AddExpecto() |> ignore
 
-        return! testApplication.RunAsync()
-    } 
-    |> Async.AwaitTask
-    |> Async.RunSynchronously
+// module Program =
+//     [<EntryPoint>]
+//     let main argv =
+//         task {
+//             let! builder = TestApplication.CreateBuilderAsync(argv) 
+//             let! testApplication =
+//                 builder
+//                     .AddExpecto()
+//                     .BuildAsync()
 
-    // Tests.runTestsInAssemblyWithCLIArgs [] argv
+//             return! testApplication.RunAsync()
+//         } 
+//         |> Async.AwaitTask
+//         |> Async.RunSynchronously
+
+//         // Tests.runTestsInAssemblyWithCLIArgs [] argv
