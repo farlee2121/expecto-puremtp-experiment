@@ -140,10 +140,10 @@ module TestNodeUpdates =
 
         recurse None test
  
-    let overwriteUpdateProps (newProperty: IProperty) (msg: TestNodeUpdateMessage) = 
+    let overwriteUpdateProps (newProperties: IProperty list) (msg: TestNodeUpdateMessage) = 
         TestNodeUpdateMessage(
             sessionUid = msg.SessionUid, 
-            testNode = TestNode(Uid = msg.TestNode.Uid, DisplayName = msg.TestNode.DisplayName, Properties = PropertyBag(newProperty)),
+            testNode = TestNode(Uid = msg.TestNode.Uid, DisplayName = msg.TestNode.DisplayName, Properties = PropertyBag(newProperties)),
             parentTestNodeUid = msg.ParentTestNodeUid)
 
 module private MTPPrinterAdapter =
@@ -158,29 +158,37 @@ module private MTPPrinterAdapter =
 
     let beforeEach name =
         Map.find name testResultLookup
-        |> TestNodeUpdates.overwriteUpdateProps (InProgressTestNodeStateProperty())
+        |> TestNodeUpdates.overwriteUpdateProps [InProgressTestNodeStateProperty()]
         |> publishMessage
+
+    let getTimeInfo(duration: TimeSpan) (endTime: DateTime) = 
+        let startTime = endTime.Subtract(duration)
+        TimingInfo(startTime, endTime, duration)
+
+    let getTimeInfoNow (duration: TimeSpan) = 
+        getTimeInfo duration DateTime.Now
 
     // let info _ = async.Zero ()
 
     let passed (name: string) (duration: TimeSpan) =
         Map.find name testResultLookup
-        |> TestNodeUpdates.overwriteUpdateProps PassedTestNodeStateProperty.CachedInstance
+        |> TestNodeUpdates.overwriteUpdateProps [PassedTestNodeStateProperty.CachedInstance; TimingProperty(getTimeInfoNow duration)]
         |> publishMessage
 
     let ignored (name: string) (reason: string) =
         Map.find name testResultLookup
-        |> TestNodeUpdates.overwriteUpdateProps (SkippedTestNodeStateProperty($"Skipped: {reason}" ))
+        |> TestNodeUpdates.overwriteUpdateProps [SkippedTestNodeStateProperty($"Skipped: {reason}" )]
         |> publishMessage
 
     let failed (name: string) (reason: string) (duration: TimeSpan) =
         Map.find name testResultLookup
-        |> TestNodeUpdates.overwriteUpdateProps (FailedTestNodeStateProperty(reason))
+        |> TestNodeUpdates.overwriteUpdateProps [FailedTestNodeStateProperty(reason); TimingProperty(getTimeInfoNow duration)]
         |> publishMessage
       
     let exn (name: string) (exn: exn) (duration: TimeSpan) =
+        
         Map.find name testResultLookup
-        |> TestNodeUpdates.overwriteUpdateProps (ErrorTestNodeStateProperty(exn))
+        |> TestNodeUpdates.overwriteUpdateProps [ErrorTestNodeStateProperty(exn); TimingProperty(getTimeInfoNow duration)]
         |> publishMessage
 
     TestPrinters.silent
@@ -276,10 +284,6 @@ type ExpectoExtension () =
 
     
 
-type internal ExpectoFrameworkCapabilities () =
-    interface ITestFrameworkCapabilities with
-      override _.Capabilities : IReadOnlyCollection<ITestFrameworkCapability> = []
-
 open System.Runtime.CompilerServices
 
 [<Extension>]
@@ -288,7 +292,7 @@ type TestApplicationBuilderExtensions() =
     [<Extension>]
     static member AddExpecto (builder: ITestApplicationBuilder) =
         let capabilityFactory (serviceProvider: IServiceProvider) : ITestFrameworkCapabilities =  
-            ExpectoFrameworkCapabilities() 
+            TestFrameworkCapabilities()
 
         let frameworkFactory (capabilities: ITestFrameworkCapabilities) (services: IServiceProvider) : ITestFramework =
             new ExpectoExtension() 

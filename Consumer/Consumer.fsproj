@@ -12,11 +12,11 @@
   <ItemGroup>
     <PackageReference Include="Expecto" Version="11.1.0" />
     <PackageReference Update="FSharp.Core" Version="10.1.401" />
-    <!-- <PackageReference Include="Microsoft.Testing.Platform.MSBuild" Version="2.5.2" /> -->
     <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="2.5.2" />
+    <PackageReference Include="Microsoft.Testing.Extensions.JUnitReport" Version="1.0.0-alpha.26527.6" />
   </ItemGroup>
   <ItemGroup>
     <!-- <ProjectReference Include="../Expecto.MTP/Expecto.MTP.fsproj" /> -->
-    <PackageReference Include="Expecto.MTP" Version="0.1.5" />
+    <PackageReference Include="Expecto.MTP" Version="0.1.8" />
   </ItemGroup>
 </Project>
