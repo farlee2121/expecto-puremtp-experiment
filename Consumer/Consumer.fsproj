@@ -17,6 +17,14 @@
   </ItemGroup>
   <ItemGroup>
     <!-- <ProjectReference Include="../Expecto.MTP/Expecto.MTP.fsproj" /> -->
-    <PackageReference Include="Expecto.MTP" Version="0.1.8" />
+    <PackageReference Include="Expecto.MTP" Version="*"/>
   </ItemGroup>
+
+
+  <Target Name="PackBeforeBuild" BeforeTargets="Build">
+    <PropertyGroup>
+      <VersionSuffix>test$([System.DateTime]::Now.ToString("yyyyMMddhhmmss"))</VersionSuffix>
+    </PropertyGroup>
+    <Exec Command="dotnet pack $(ProjectDir)/../Expecto.MTP -o $(ProjectDir)/../local-nuget --version-suffix $(VersionSuffix)" />
+  </Target>
 </Project>
