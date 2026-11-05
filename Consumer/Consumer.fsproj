@@ -13,11 +13,11 @@
     <PackageReference Include="Expecto" Version="11.1.0" />
     <PackageReference Update="FSharp.Core" Version="10.1.401" />
     <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="2.5.2" />
-    <PackageReference Include="Microsoft.Testing.Extensions.JUnitReport" Version="1.0.0-alpha.26527.6" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CtrfReport" Version="1.0.0-alpha.26527.6" />
   </ItemGroup>
   <ItemGroup>
     <!-- <ProjectReference Include="../Expecto.MTP/Expecto.MTP.fsproj" /> -->
-    <PackageReference Include="Expecto.MTP" Version="*"/>
+    <PackageReference Include="Expecto.MTP" Version="*-test*" />
   </ItemGroup>
 
 
@@ -25,6 +25,10 @@
     <PropertyGroup>
       <VersionSuffix>test$([System.DateTime]::Now.ToString("yyyyMMddhhmmss"))</VersionSuffix>
     </PropertyGroup>
+    <ItemGroup>
+      <OldPackages Include="$(ProjectDir)/../local-nuget/*.nupkg" />
+    </ItemGroup>
+    <Delete Files="@(OldPackages)" />
     <Exec Command="dotnet pack $(ProjectDir)/../Expecto.MTP -o $(ProjectDir)/../local-nuget --version-suffix $(VersionSuffix)" />
   </Target>
 </Project>
