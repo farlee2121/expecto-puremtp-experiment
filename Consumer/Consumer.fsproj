@@ -21,7 +21,16 @@
   </ItemGroup>
 
 
-  <Target Name="PackBeforeBuild" BeforeTargets="Build">
+  <PropertyGroup>
+    <!-- 
+      Pack Expecto.MTP by default, allowing us to run this project independently, but allow us to optionally skip packing so tests don't re-pack on every run
+      skip packing example `dotnet run -project ./Consumer -p SkipPack=True` 
+      note: for some reason the xml comment is going wild if i add a double dash so you'll just have to add the other dash before project
+     -->
+    <SkipPack Condition="'$(SkipPack)'==''">False</SkipPack>
+    <SkipPack Condition="'$(SkipPack)'!='False'">True</SkipPack>
+  </PropertyGroup>
+  <Target Name="PackBeforeBuild" BeforeTargets="Build" Condition="'$(SkipPack)'=='False'">
     <PropertyGroup>
       <VersionSuffix>test$([System.DateTime]::Now.ToString("yyyyMMddhhmmss"))</VersionSuffix>
     </PropertyGroup>
