@@ -6,9 +6,16 @@ module MTPWrapper =
   open System
   open Expecto.MTP.Tests.Ctrf
 
-  let discover (projectPath: string) = 
+  let discoverWithFilter (projectPath: string) (filter: string option) = 
     // NOTE: --list-tests json doesn't work with `dotnet test` you have to run the test project directly
-    let psi = ProcessStartInfo("dotnet", arguments = [|"run"; "--project"; projectPath; "--list-tests"; "json"; "--no-banner"; "-p"; "SkipPack=True"|])
+    let psi = ProcessStartInfo("dotnet", arguments = [|
+      "run"; "--project"; projectPath; 
+      "-p"; "SkipPack=True"
+      "--"
+      "--list-tests"; "json";
+      "--no-banner"; 
+      match filter with | Some filter -> yield! [|"--filter-uid"; filter |] | None -> ()
+    |])
     
     psi.WorkingDirectory <- projectPath
     psi.RedirectStandardOutput <- true
@@ -20,9 +27,17 @@ module MTPWrapper =
 
     MTPDiscoveryModel.parse discoveredJson
 
-  let runToCtrf (projectDir: string) = 
+  let discover (projectPath: string) = discoverWithFilter projectPath None
+
+  let runToCtrfWithFilter (projectDir: string) (filter: string option) = 
     let reportPath = Path.Join(projectDir, "TestResults", $"{Guid.NewGuid()}.json")
-    let psi = ProcessStartInfo("dotnet", arguments = [|"run"; "--project"; projectDir; "-p"; "SkipPack=True"; "--"; "--report-ctrf"; "--report-ctrf-filename"; reportPath; |])
+    let psi = ProcessStartInfo("dotnet", arguments = [|
+      "run"; "--project"; projectDir; 
+      "-p"; "SkipPack=True"; 
+      "--"; 
+      "--report-ctrf"; "--report-ctrf-filename"; reportPath;
+      match filter with | Some filter -> yield! [|"--filter-uid"; filter |] | None -> () 
+    |])
     
     // NOTE: we have to run from the SampleTestProjects directory because we need the global.json with "runner": "Microsoft.Testing.Platform"
     //       Expecto.MTP.Tests can't safely use MTP as the runner because we need to write these tests in order for stable expecto MTP support to exist.  
@@ -33,6 +48,8 @@ module MTPWrapper =
     
     let ctrfResults = CtrfParser.ofFilePath reportPath
     ctrfResults
+
+  let runToCtrf (projectPath: string) = runToCtrfWithFilter projectPath None
 
 
 module Tests =
@@ -73,6 +90,28 @@ module Tests =
         let actual = discoveryResult.tests |> Array.map _.uid |> List.ofArray
         Expect.equal(actual |> List.sort) (expected |> List.sort) ""
 
+      testCase "discover should show justs then tests in a group when filtered to the groups uid" <| fun _ ->
+        
+        let groupId = "samples.nested"
+        let expected = [ 
+          "samples.nested.pass"
+        ]
+
+        let discoveryResult = MTPWrapper.discoverWithFilter SampleProjects.sampleConsumer (Some groupId)
+
+        let actual = discoveryResult.tests |> Array.map _.uid |> List.ofArray
+        Expect.equal(actual |> List.sort) (expected |> List.sort) ""
+
+      testCase "discover should show just the specified test when filtered to a test's uid" <| fun _ ->
+        
+        let testId= "samples.nested.pass"
+        let expected = [ testId ]
+
+        let discoveryResult = MTPWrapper.discoverWithFilter SampleProjects.sampleConsumer (Some testId)
+
+        let actual = discoveryResult.tests |> Array.map _.uid |> List.ofArray
+        Expect.equal(actual) (expected) ""
+
       testCase "Should run tests and report outcomes. Only runnable tests are reported, not groups" <| fun _ ->
         
         // Q: What do I do about ignored tests?
@@ -101,7 +140,6 @@ module Tests =
           (actualErroredTest.Value.Message, actualErroredTest.Value.Extra.ExceptionType)
           ("Special error message", "Tests+SpecialException") 
           ""
-        // Q: Do we want to test that the exception type is reported correctly? The data exists in the CTRF report
 
       
       testCase "Should report test duration for any non-skipped tests" <| fun _ -> 
