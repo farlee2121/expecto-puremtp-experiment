@@ -4,7 +4,7 @@ module MTPWrapper =
   open System.Diagnostics
   let discover (projectPath: string) = 
     // NOTE: --list-tests json doesn't work with `dotnet test` you have to run the test project directly
-    let psi = ProcessStartInfo("dotnet", arguments = [|"run"; "--project"; projectPath; "--list-tests"; "json"; "--no-banner"|])
+    let psi = ProcessStartInfo("dotnet", arguments = [|"run"; "--project"; projectPath; "--list-tests"; "json"; "--no-banner"; "-p"; "SkipPack=True"|])
     
     psi.WorkingDirectory <- projectPath
     psi.RedirectStandardOutput <- true
