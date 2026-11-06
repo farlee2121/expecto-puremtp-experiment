@@ -12,7 +12,6 @@
   <ItemGroup>
     <PackageReference Include="Expecto" Version="11.1.0" />
     <PackageReference Update="FSharp.Core" Version="10.1.401" />
-    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="2.5.2" />
     <PackageReference Include="Microsoft.Testing.Extensions.CtrfReport" Version="1.0.0-alpha.26527.6" />
   </ItemGroup>
   <ItemGroup>
