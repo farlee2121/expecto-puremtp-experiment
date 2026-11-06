@@ -39,13 +39,18 @@ module Tests =
   open Expecto
   open System.IO
 
-  let sampleProjectsDir = Path.Join(__SOURCE_DIRECTORY__, "SampleTestProjects")
 
   module Outcomes =
     
     let [<Literal>] passed = "passed" 
     let [<Literal>] skipped = "skipped" 
     let [<Literal>] failed = "failed" 
+
+
+  module SampleProjects = 
+    let sampleProjectsDir = Path.Join(__SOURCE_DIRECTORY__, "SampleTestProjects")
+
+    let sampleConsumer = Path.Join(sampleProjectsDir, "SampleConsumer")
 
   [<Tests>]
   let tests =
@@ -54,14 +59,12 @@ module Tests =
         
         let expected = ["samples"; "samples.pass"; "samples.fail"; "samples.skipped"; "samples.nested"; "samples.nested.pass"]
 
-        let targetProjectDir = Path.Join(sampleProjectsDir, "SampleConsumer")
+        let targetProjectDir = SampleProjects.sampleConsumer
         let discoveryResult = MTPWrapper.discover targetProjectDir
 
         let actual = discoveryResult.tests |> Array.map _.uid |> List.ofArray
         Expect.equal(actual |> List.sort) (expected |> List.sort) ""
 
-
-      // TODO: I need a test that errored
       testCase "Should run tests and report outcomes. Only runnable tests are reported, not groups" <| fun _ ->
         
         let expected = [
@@ -71,10 +74,22 @@ module Tests =
           "samples.nested.pass", Outcomes.passed
         ]
 
-        let targetProjectDir = Path.Join(sampleProjectsDir, "SampleConsumer")
+        let targetProjectDir = SampleProjects.sampleConsumer
         let runResult = MTPWrapper.runToCtrf targetProjectDir
 
         let ctrfToLikeness (t: Ctrf.TestModel) = (t.TestId, t.Status) 
         let actual = runResult.Results.Tests |> Array.map ctrfToLikeness |> List.ofArray
         Expect.equal(actual |> List.sort) (expected |> List.sort) ""
+
+      
+      testCase "Should report test duration for any non-skipped tests" <| fun _ ->
+        
+        let targetProjectDir = SampleProjects.sampleConsumer
+        let runResult = MTPWrapper.runToCtrf targetProjectDir
+
+         
+        let actual = runResult.Results.Tests |> Array.filter (fun t -> t.Status <> Outcomes.skipped)
+        
+        Expect.isNonEmpty actual ""
+        Expect.isTrue (actual |> Array.forall (fun t -> t.Duration > 0)) $"Actual: {actual}"
     ]
