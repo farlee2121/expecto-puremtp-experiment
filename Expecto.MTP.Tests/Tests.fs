@@ -90,7 +90,7 @@ module Tests =
         let actual = discoveryResult.tests |> Array.map _.uid |> List.ofArray
         Expect.equal(actual |> List.sort) (expected |> List.sort) ""
 
-      testCase "discover should show justs then tests in a group when filtered to the groups uid" <| fun _ ->
+      testCase "discover should show justs the tests in a group when filtered to the groups uid" <| fun _ ->
         
         let groupId = "samples.nested"
         let expected = [ 
@@ -152,4 +152,27 @@ module Tests =
         Expect.isTrue (actual |> Array.forall (fun t -> t.Duration > 0)) $"Actual: {actual}"
 
 
+      testCase "run should execute just the tests in a group when filtered to the groups uid" <| fun _ ->        
+        let groupId = "samples.nested"
+        let expected = [
+          "samples.nested.pass", Outcomes.passed
+        ]
+
+        let runResult = MTPWrapper.runToCtrfWithFilter SampleProjects.sampleConsumer (Some groupId)
+
+        let ctrfToLikeness (t: Ctrf.TestModel) = (t.TestId, t.Status) 
+        let actual = runResult.Results.Tests |> Array.map ctrfToLikeness |> List.ofArray
+        Expect.equal(actual |> List.sort) (expected |> List.sort) ""
+
+      testCase "run should execute just the request test when filtered to a test's id" <| fun _ ->        
+        let testId = "samples.fail"
+        let expected = [
+          testId, Outcomes.failed
+        ]
+
+        let runResult = MTPWrapper.runToCtrfWithFilter SampleProjects.sampleConsumer (Some testId)
+
+        let ctrfToLikeness (t: Ctrf.TestModel) = (t.TestId, t.Status) 
+        let actual = runResult.Results.Tests |> Array.map ctrfToLikeness |> List.ofArray
+        Expect.equal(actual |> List.sort) (expected |> List.sort) ""
     ]
