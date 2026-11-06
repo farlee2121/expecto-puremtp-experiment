@@ -32,12 +32,13 @@
   </PropertyGroup>
   <Target Name="PackBeforeBuild" BeforeTargets="Build" Condition="'$(SkipPack)'=='False'">
     <PropertyGroup>
+      <RepoRoot>$(ProjectDir)/../../..</RepoRoot>
       <VersionSuffix>test$([System.DateTime]::Now.ToString("yyyyMMddhhmmss"))</VersionSuffix>
     </PropertyGroup>
     <ItemGroup>
-      <OldPackages Include="$(ProjectDir)/../local-nuget/*.nupkg" />
+      <OldPackages Include="$(RepoRoot)/local-nuget/*.nupkg" />
     </ItemGroup>
     <Delete Files="@(OldPackages)" />
-    <Exec Command="dotnet pack $(ProjectDir)/../Expecto.MTP -o $(ProjectDir)/../local-nuget --version-suffix $(VersionSuffix)" />
+    <Exec Command="dotnet pack $(RepoRoot)/Expecto.MTP -o $(RepoRoot)/local-nuget --version-suffix $(VersionSuffix)" />
   </Target>
 </Project>

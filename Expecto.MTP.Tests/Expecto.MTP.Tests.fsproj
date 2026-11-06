@@ -1,0 +1,31 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <GenerateProgramFile>false</GenerateProgramFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Tests.fs" /><Compile Include="Main.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Expecto.MTP/Expecto.MTP.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="YoloDev.Expecto.TestSdk" Version="0.16.1" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageReference Update="FSharp.Core" Version="10.1.403" />
+  </ItemGroup>
+
+  <Target Name="PackBeforeBuild" BeforeTargets="Build">
+    <!-- Generate Expecto.MTP for the test samples to reference with Version="*-test*" -->
+    <PropertyGroup>
+      <RepoRoot>$(ProjectDir)/..</RepoRoot>
+      <VersionSuffix>test$([System.DateTime]::Now.ToString("yyyyMMddhhmmss"))</VersionSuffix>
+    </PropertyGroup>
+    <ItemGroup>
+      <OldPackages Include="$(RepoRoot)/local-nuget/*.nupkg" />
+    </ItemGroup>
+    <Delete Files="@(OldPackages)" />
+    <Exec Command="dotnet pack $(RepoRoot)/Expecto.MTP -o $(RepoRoot)/local-nuget --version-suffix $(VersionSuffix)" />
+  </Target>
+</Project>
