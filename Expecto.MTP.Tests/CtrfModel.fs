@@ -2,6 +2,8 @@ namespace Expecto.MTP.Tests.Ctrf
 
 open System
 
+// SOURCE: https://github.com/ctrf-io/dotnet-ctrf-json-reporter/blob/main/TestResultModel.cs
+
 [<CLIMutable>]
 type EnvironmentModel = {
     ShardId: string
@@ -24,6 +26,10 @@ type SummaryModel = {
     Stop: int64
 }
 
+type TestExtra = {
+    ExceptionType: string | null
+}
+
 [<CLIMutable>]
 type TestModel = {
     TestId: string
@@ -31,29 +37,21 @@ type TestModel = {
     Name: string
     Status: string
     Duration: int64
-    //[<JsonProperty(NullValueHandling = NullValueHandling.Ignore)>]
     Start: Nullable<int64>
-    //[<JsonProperty(NullValueHandling = NullValueHandling.Ignore)>]
     Stop: Nullable<int64>
-    //[<JsonProperty(NullValueHandling = NullValueHandling.Ignore)>]
     Suite: string[] | null
-    //[<JsonProperty(NullValueHandling = NullValueHandling.Ignore)>]
     Message: string | null
-    //[<JsonProperty(NullValueHandling = NullValueHandling.Ignore)>]
     Trace: string | null
-    //[<JsonProperty(NullValueHandling = NullValueHandling.Ignore)>]
     Line: Nullable<int>
-    //[<JsonProperty(NullValueHandling = NullValueHandling.Ignore)>]
     RawStatus: string | null
-    //[<JsonProperty(NullValueHandling = NullValueHandling.Ignore)>]
     FilePath: string | null
-    //[<JsonProperty(NullValueHandling = NullValueHandling.Ignore)>]
     Stdout: string[] | null
+    
+    Extra: TestExtra
 }
 
 [<CLIMutable>]
 type ResultsModel = {
-    //[<JsonProperty(NullValueHandling = NullValueHandling.Ignore)>]
     Environment: EnvironmentModel | null
     Tool: ToolModel
     Summary: SummaryModel
@@ -63,7 +61,6 @@ type ResultsModel = {
 [<CLIMutable>]
 type TestResultsModel = {
     SpecVersion: string
-    //[<JsonProperty(NullValueHandling = NullValueHandling.Ignore)>]
     RunId: string | null
     ReportId: string
     Timestamp: string

@@ -2,6 +2,9 @@ module Tests
 
 open Expecto
 
+type SpecialException(message: string) = 
+  inherit System.Exception(message)
+
 [<Tests>]
 let tests =
   testList "samples" [
@@ -15,6 +18,9 @@ let tests =
 
     testCase "skipped" <| fun _ ->
       Tests.skiptest "Yup, waiting for a sunny day..."
+
+    testCase "error" <| fun _ ->
+      raise (SpecialException("Special error message"))
 
     testList "nested" [
       testCase "pass" <| fun () -> ()

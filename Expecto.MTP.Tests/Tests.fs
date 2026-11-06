@@ -52,44 +52,66 @@ module Tests =
 
     let sampleConsumer = Path.Join(sampleProjectsDir, "SampleConsumer")
 
+
   [<Tests>]
   let tests =
     testList "Expecto.MTP" [
       testCase "Should discover test cases" <| fun _ ->
         
-        let expected = ["samples"; "samples.pass"; "samples.fail"; "samples.skipped"; "samples.nested"; "samples.nested.pass"]
+        let expected = [
+          "samples"
+          "samples.pass" 
+          "samples.fail"
+          "samples.error"
+          "samples.skipped" 
+          "samples.nested" 
+          "samples.nested.pass"
+        ]
 
-        let targetProjectDir = SampleProjects.sampleConsumer
-        let discoveryResult = MTPWrapper.discover targetProjectDir
+        let discoveryResult = MTPWrapper.discover SampleProjects.sampleConsumer
 
         let actual = discoveryResult.tests |> Array.map _.uid |> List.ofArray
         Expect.equal(actual |> List.sort) (expected |> List.sort) ""
 
       testCase "Should run tests and report outcomes. Only runnable tests are reported, not groups" <| fun _ ->
         
+        // Q: What do I do about ignored tests?
         let expected = [
-          ("samples.pass", Outcomes.passed); 
-          "samples.fail", Outcomes.failed; 
-          "samples.skipped", Outcomes.skipped;  
+          ("samples.pass", Outcomes.passed) 
+          "samples.fail", Outcomes.failed
+          "samples.skipped", Outcomes.skipped 
           "samples.nested.pass", Outcomes.passed
+          "samples.error", Outcomes.failed
         ]
 
-        let targetProjectDir = SampleProjects.sampleConsumer
-        let runResult = MTPWrapper.runToCtrf targetProjectDir
+        let runResult = MTPWrapper.runToCtrf SampleProjects.sampleConsumer
 
         let ctrfToLikeness (t: Ctrf.TestModel) = (t.TestId, t.Status) 
         let actual = runResult.Results.Tests |> Array.map ctrfToLikeness |> List.ofArray
         Expect.equal(actual |> List.sort) (expected |> List.sort) ""
 
+      testCase "Should include trace information on errored tests" <| fun _ ->
+        let runResult = MTPWrapper.runToCtrf SampleProjects.sampleConsumer
+
+        let actualErroredTest = runResult.Results.Tests |> Array.tryFind (fun t -> t.TestId = "samples.error")
+
+        Expect.isSome actualErroredTest ""
+        Expect.isNotEmpty actualErroredTest.Value.Trace ""
+        Expect.equal 
+          (actualErroredTest.Value.Message, actualErroredTest.Value.Extra.ExceptionType)
+          ("Special error message", "Tests+SpecialException") 
+          ""
+        // Q: Do we want to test that the exception type is reported correctly? The data exists in the CTRF report
+
       
-      testCase "Should report test duration for any non-skipped tests" <| fun _ ->
-        
+      testCase "Should report test duration for any non-skipped tests" <| fun _ -> 
         let targetProjectDir = SampleProjects.sampleConsumer
         let runResult = MTPWrapper.runToCtrf targetProjectDir
 
-         
         let actual = runResult.Results.Tests |> Array.filter (fun t -> t.Status <> Outcomes.skipped)
         
         Expect.isNonEmpty actual ""
         Expect.isTrue (actual |> Array.forall (fun t -> t.Duration > 0)) $"Actual: {actual}"
+
+
     ]
