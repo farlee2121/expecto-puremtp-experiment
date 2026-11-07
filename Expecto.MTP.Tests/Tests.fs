@@ -5,6 +5,7 @@ module MTPWrapper =
   open System.IO
   open System
   open Expecto.MTP.Tests.Ctrf
+  open Expecto.MTP.Tests.MTPDiscoveryModel
 
   let discoverWithFilter (projectPath: string) (filter: string option) = 
     // NOTE: --list-tests json doesn't work with `dotnet test` you have to run the test project directly
@@ -25,7 +26,7 @@ module MTPWrapper =
 
     let discoveredJson = discoveryProcess.StandardOutput.ReadToEnd()
 
-    MTPDiscoveryModel.parse discoveredJson
+    DiscoverResult.parse discoveredJson
 
   let discover (projectPath: string) = discoverWithFilter projectPath None
 
@@ -69,112 +70,136 @@ module Tests =
 
     let sampleConsumer = Path.Join(sampleProjectsDir, "SampleConsumer")
 
+  open Expecto.MTP.Tests.MTPDiscoveryModel
 
   [<Tests>]
   let tests =
     testList "Expecto.MTP" [
-      testCase "Should discover test cases" <| fun _ ->
+      testList "discover" [
+        testCase "Should discover the expected test cases" <| fun _ ->
         
-        let expected = [
-          "samples"
-          "samples.pass" 
-          "samples.fail"
-          "samples.error"
-          "samples.skipped" 
-          "samples.nested" 
-          "samples.nested.pass"
-          "samples.ignored"
-        ]
+          let expected = [
+            "samples"
+            "samples.pass" 
+            "samples.fail"
+            "samples.error"
+            "samples.skipped" 
+            "samples.nested" 
+            "samples.nested.pass"
+            "samples.ignored"
+          ]
 
-        let discoveryResult = MTPWrapper.discover SampleProjects.sampleConsumer
+          let discoveryResult = MTPWrapper.discover SampleProjects.sampleConsumer
 
-        let actual = discoveryResult.tests |> Array.map _.uid |> List.ofArray
-        Expect.equal(actual |> List.sort) (expected |> List.sort) ""
+          let actual = discoveryResult.tests |> Array.map _.uid |> List.ofArray
+          Expect.equal(actual |> List.sort) (expected |> List.sort) ""
 
-      testCase "discover should show justs the tests in a group when filtered to the groups uid" <| fun _ ->
-        
-        let groupId = "samples.nested"
-        let expected = [ 
-          "samples.nested.pass"
-        ]
+        testCase "should show justs the tests in a group when filtered to the groups uid" <| fun _ ->
+          
+          let groupId = "samples.nested"
+          let expected = [ 
+            "samples.nested.pass"
+          ]
 
-        let discoveryResult = MTPWrapper.discoverWithFilter SampleProjects.sampleConsumer (Some groupId)
+          let discoveryResult = MTPWrapper.discoverWithFilter SampleProjects.sampleConsumer (Some groupId)
 
-        let actual = discoveryResult.tests |> Array.map _.uid |> List.ofArray
-        Expect.equal(actual |> List.sort) (expected |> List.sort) ""
+          let actual = discoveryResult.tests |> Array.map _.uid |> List.ofArray
+          Expect.equal(actual |> List.sort) (expected |> List.sort) ""
 
-      testCase "discover should show just the specified test when filtered to a test's uid" <| fun _ ->
-        
-        let testId= "samples.nested.pass"
-        let expected = [ testId ]
+        testCase "should show just the specified test when filtered to a test's uid" <| fun _ ->
+          
+          let testId= "samples.nested.pass"
+          let expected = [ testId ]
 
-        let discoveryResult = MTPWrapper.discoverWithFilter SampleProjects.sampleConsumer (Some testId)
+          let discoveryResult = MTPWrapper.discoverWithFilter SampleProjects.sampleConsumer (Some testId)
 
-        let actual = discoveryResult.tests |> Array.map _.uid |> List.ofArray
-        Expect.equal(actual) (expected) ""
+          let actual = discoveryResult.tests |> Array.map _.uid |> List.ofArray
+          Expect.equal(actual) (expected) ""
 
-      testCase "Should run tests and report outcomes. Only runnable tests are reported, not groups" <| fun _ ->
-        
-        // Q: What do I do about ignored tests?
-        let expected = [
-          ("samples.pass", Outcomes.passed) 
-          "samples.fail", Outcomes.failed
-          "samples.skipped", Outcomes.skipped 
-          "samples.nested.pass", Outcomes.passed
-          "samples.error", Outcomes.failed
-          "samples.ignored", Outcomes.skipped
-        ]
+        testCase "should include test source locations" <| fun () -> 
+          let testId= "samples.pass"
+          let expected : DiscoveredTest array = 
+            [| 
+              { uid = testId; displayName = "pass"; location = { file = Path.Join( SampleProjects.sampleConsumer, "Sample.fs"); lineStart = 12; lineEnd = 12 } }
+            |]
 
-        let runResult = MTPWrapper.runToCtrf SampleProjects.sampleConsumer
+          let discoveryResult = MTPWrapper.discoverWithFilter SampleProjects.sampleConsumer (Some testId)
 
-        let ctrfToLikeness (t: Ctrf.TestModel) = (t.TestId, t.Status) 
-        let actual = runResult.Results.Tests |> Array.map ctrfToLikeness |> List.ofArray
-        Expect.equal(actual |> List.sort) (expected |> List.sort) ""
-
-      testCase "Should include trace information on errored tests" <| fun _ ->
-        let runResult = MTPWrapper.runToCtrf SampleProjects.sampleConsumer
-
-        let actualErroredTest = runResult.Results.Tests |> Array.tryFind (fun t -> t.TestId = "samples.error")
-
-        Expect.isSome actualErroredTest ""
-        Expect.isNotEmpty actualErroredTest.Value.Trace ""
-        Expect.equal 
-          (actualErroredTest.Value.Message, actualErroredTest.Value.Extra.ExceptionType)
-          ("Special error message", "Tests+SpecialException") 
-          ""
-
+          // MTP returns the uid in the display name when you filter, but just the test's name if you list all tests, so mapping to exclude the displayName 
+          let toLikeness (t: DiscoveredTest) = (t.uid, t.location) 
+          let actual = discoveryResult.tests
+          Expect.equal(actual |> Array.map toLikeness) (expected |> Array.map toLikeness) ""
+      ]
       
-      testCase "Should report test duration for any non-skipped tests" <| fun _ -> 
-        let targetProjectDir = SampleProjects.sampleConsumer
-        let runResult = MTPWrapper.runToCtrf targetProjectDir
-
-        let actual = runResult.Results.Tests |> Array.filter (fun t -> t.Status <> Outcomes.skipped)
+      testList "run" [
         
-        Expect.isNonEmpty actual ""
-        Expect.isTrue (actual |> Array.forall (fun t -> t.Duration > 0)) $"Actual: {actual}"
+        testCase "Should run tests and report outcomes. Only runnable tests are reported, not groups" <| fun _ ->
+          let expected = [
+            ("samples.pass", Outcomes.passed) 
+            "samples.fail", Outcomes.failed
+            "samples.skipped", Outcomes.skipped 
+            "samples.nested.pass", Outcomes.passed
+            "samples.error", Outcomes.failed
+            "samples.ignored", Outcomes.skipped
+          ]
+
+          let runResult = MTPWrapper.runToCtrf SampleProjects.sampleConsumer
+
+          let ctrfToLikeness (t: Ctrf.TestModel) = (t.TestId, t.Status) 
+          let actual = runResult.Results.Tests |> Array.map ctrfToLikeness |> List.ofArray
+          Expect.equal(actual |> List.sort) (expected |> List.sort) ""
+
+        testCase "Should include trace information on errored tests" <| fun _ ->
+          let runResult = MTPWrapper.runToCtrf SampleProjects.sampleConsumer
+
+          let actualErroredTest = runResult.Results.Tests |> Array.tryFind (fun t -> t.TestId = "samples.error")
+
+          Expect.isSome actualErroredTest ""
+          Expect.isNotEmpty actualErroredTest.Value.Trace ""
+          Expect.equal 
+            (actualErroredTest.Value.Message, actualErroredTest.Value.Extra.ExceptionType)
+            ("Special error message", "Tests+SpecialException") 
+            ""
+
+        
+        testCase "Should report test duration for any non-skipped tests" <| fun _ -> 
+          let targetProjectDir = SampleProjects.sampleConsumer
+          let runResult = MTPWrapper.runToCtrf targetProjectDir
+
+          let actual = runResult.Results.Tests |> Array.filter (fun t -> t.Status <> Outcomes.skipped)
+          
+          Expect.isNonEmpty actual ""
+          Expect.isTrue (actual |> Array.forall (fun t -> t.Duration > 0)) $"Actual: {actual}"
 
 
-      testCase "run should execute just the tests in a group when filtered to the groups uid" <| fun _ ->        
-        let groupId = "samples.nested"
-        let expected = [
-          "samples.nested.pass", Outcomes.passed
-        ]
+        testCase "should execute just the tests in a group when filtered to the groups uid" <| fun _ ->        
+          let groupId = "samples.nested"
+          let expected = [
+            "samples.nested.pass", Outcomes.passed
+          ]
 
-        let runResult = MTPWrapper.runToCtrfWithFilter SampleProjects.sampleConsumer (Some groupId)
+          let runResult = MTPWrapper.runToCtrfWithFilter SampleProjects.sampleConsumer (Some groupId)
 
-        let ctrfToLikeness (t: Ctrf.TestModel) = (t.TestId, t.Status) 
-        let actual = runResult.Results.Tests |> Array.map ctrfToLikeness |> List.ofArray
-        Expect.equal(actual |> List.sort) (expected |> List.sort) ""
+          let ctrfToLikeness (t: Ctrf.TestModel) = (t.TestId, t.Status) 
+          let actual = runResult.Results.Tests |> Array.map ctrfToLikeness |> List.ofArray
+          Expect.equal(actual |> List.sort) (expected |> List.sort) ""
 
-      testCase "run should execute just the request test when filtered to a test's id" <| fun _ ->        
-        let testId = "samples.fail"
-        let expected = [
-          testId, Outcomes.failed
-        ]
+        testCase "should execute just the request test when filtered to a test's id" <| fun _ ->        
+          let testId = "samples.fail"
+          let expected = [
+            testId, Outcomes.failed
+          ]
 
-        let runResult = MTPWrapper.runToCtrfWithFilter SampleProjects.sampleConsumer (Some testId)
+          let runResult = MTPWrapper.runToCtrfWithFilter SampleProjects.sampleConsumer (Some testId)
 
-        let ctrfToLikeness (t: Ctrf.TestModel) = (t.TestId, t.Status) 
-        let actual = runResult.Results.Tests |> Array.map ctrfToLikeness |> List.ofArray
-        Expect.equal(actual |> List.sort) (expected |> List.sort) ""
+          let ctrfToLikeness (t: Ctrf.TestModel) = (t.TestId, t.Status) 
+          let actual = runResult.Results.Tests |> Array.map ctrfToLikeness |> List.ofArray
+          Expect.equal(actual |> List.sort) (expected |> List.sort) ""
+
+        // PROBLEM: CTRF doesn't include test location data, so we'll have to use a different report format to test this
+        // testCase "run should report test locations" <| fun () -> 
+        //   ()
+      ]
+      
+
     ]

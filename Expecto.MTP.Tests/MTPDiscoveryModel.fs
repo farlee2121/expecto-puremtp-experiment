@@ -1,25 +1,25 @@
-namespace Expecto.MTP.Tests
+namespace Expecto.MTP.Tests.MTPDiscoveryModel
 
-module MTPDiscoveryModel = 
 
-  type Location = {
+type Location = {
     file: string
     lineStart: int
     lineEnd: int
-  }
+}
 
 
-  type DiscoveredTest = {
+type DiscoveredTest = {
     uid: string
     displayName: string
     location: Location
-  }
+}
 
-  type DiscoverResult = {
+type DiscoverResult = {
     schemaVersion: int
     tests: DiscoveredTest array
-  }
+}
 
-  open System.Text.Json
-  let parse (json: string) : DiscoverResult=
-    JsonSerializer.Deserialize<DiscoverResult>(json) 
+module DiscoverResult = 
+    open System.Text.Json
+    let parse (json: string) : DiscoverResult=
+        JsonSerializer.Deserialize<DiscoverResult>(json) 
