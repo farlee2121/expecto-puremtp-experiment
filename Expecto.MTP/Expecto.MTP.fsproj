@@ -1,17 +1,14 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Library</OutputType>
     <TargetFramework>netstandard2.0</TargetFramework>
     <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
   </PropertyGroup>
-
   <PropertyGroup>
-    <IsPackable>true</IsPackable> 
+    <IsPackable>true</IsPackable>
     <PackageId>Expecto.MTP</PackageId>
     <VersionPrefix>0.1.5</VersionPrefix>
   </PropertyGroup>
-
   <ItemGroup>
     <None Include="Properties\launchSettings.json" />
     <Content Include="buildMultiTargeting/**">
@@ -24,9 +21,11 @@
     <TfmSpecificPackageFile Include="buildTransitive/**">
       <PackagePath>buildTransitive/$(TargetFramework)</PackagePath>
     </TfmSpecificPackageFile>
-    <Compile Include="Main.fs" />
+    <Compile Include="FilterConversion.fs" />
+    <Compile Include="ExpectoTestFrameworkExtension.fs" />
+    <Compile Include="TestingPlatformBuilderExtensions.fs" />
+    <Compile Include="TestingPlatformBuilderHook.fs" />
   </ItemGroup>
-
   <ItemGroup>
     <PackageReference Include="Expecto" Version="11.1.0" />
     <PackageReference Update="FSharp.Core" Version="10.1.401" />
