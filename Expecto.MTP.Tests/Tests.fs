@@ -83,6 +83,7 @@ module Tests =
           "samples.skipped" 
           "samples.nested" 
           "samples.nested.pass"
+          "samples.ignored"
         ]
 
         let discoveryResult = MTPWrapper.discover SampleProjects.sampleConsumer
@@ -121,6 +122,7 @@ module Tests =
           "samples.skipped", Outcomes.skipped 
           "samples.nested.pass", Outcomes.passed
           "samples.error", Outcomes.failed
+          "samples.ignored", Outcomes.skipped
         ]
 
         let runResult = MTPWrapper.runToCtrf SampleProjects.sampleConsumer

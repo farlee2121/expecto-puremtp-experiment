@@ -22,6 +22,8 @@ let tests =
     testCase "error" <| fun _ ->
       raise (SpecialException("Special error message"))
 
+    ptestCase "ignored" <| fun () -> ()
+
     testList "nested" [
       testCase "pass" <| fun () -> ()
     ]
