@@ -41,7 +41,7 @@ module TestNodeUpdates =
             | Some locationProp -> locationProp :: props
 
 
-    let ofExpectoTest (nameJoiner: string) (tryGetCodeLocation: Test -> SourceLocation option) (sessionId: SessionUid) (properties: IProperty list) (test: Test) : TestNodeUpdateMessage list =
+    let ofExpectoTest (nameJoiner: string) (tryGetCodeLocation: Test -> SourceLocation option) (sessionId: SessionUid) (leafProperties: IProperty list) (test: Test) : TestNodeUpdateMessage list =
         let rec recurse (parentId: TestNodeUid option) (test: Test) : TestNodeUpdateMessage list =
             match test with 
             | Test.Sequenced (_, childTest) -> recurse parentId childTest
@@ -59,14 +59,21 @@ module TestNodeUpdates =
 
                     let maybeCodeLocation = tryGetCodeLocation testNode |> Option.map TestFileLocationProperty.ofSourceLocation
 
-                    let properties = properties |> TestFileLocationProperty.tryAddLocationProp  maybeCodeLocation
+                    let properties = leafProperties |> TestFileLocationProperty.tryAddLocationProp  maybeCodeLocation
+                    
+                    //IMPORTANT: if we set any TestNodeExecutionCompletedProperty or TestNodeStateProperty, including DiscoveredTestNodeStateProperty, it'll consider the test an action not a group 
+                    let isLeaf = 
+                        match childTest with 
+                        | TestCase _ -> true
+                        | TestLabel _ | TestList _ | Test.Sequenced _ -> false
+                    let nodeProperties = if isLeaf then PropertyBag(properties) else PropertyBag()
 
                     TestNodeUpdateMessage(
                         sessionId,
                         new TestNode(
                             Uid = TestNodeUid(testFullName), 
                             DisplayName = label, 
-                            Properties = PropertyBag(properties)),
+                            Properties = nodeProperties),
                         parentId |> Option.defaultValue null
                     )
                 let childNodes = recurse (Some currentNode.TestNode.Uid) childTest

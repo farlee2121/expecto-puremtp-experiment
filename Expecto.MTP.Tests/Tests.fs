@@ -76,15 +76,13 @@ module Tests =
   let tests =
     testList "Expecto.MTP" [
       testList "discover" [
-        testCase "Should discover the expected test cases" <| fun _ ->
+        testCase "Should discover the expected test cases, no grouping nodes" <| fun _ ->
         
           let expected = [
-            "samples"
             "samples.pass" 
             "samples.fail"
             "samples.error"
-            "samples.skipped" 
-            "samples.nested" 
+            "samples.skipped"
             "samples.nested.pass"
             "samples.ignored"
           ]
